@@ -1,0 +1,12 @@
+[package]
+name = "bluezadvertising"
+version = "0.1.0"
+authors = ["Jordan Yelloz <jordan@yelloz.me>"]
+edition = "2018"
+
+[dependencies]
+zbus = "1"
+zvariant = "2"
+anyhow = "*"
+serde = "1"
+derivative = "2.1"
