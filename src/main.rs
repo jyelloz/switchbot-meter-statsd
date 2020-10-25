@@ -10,9 +10,6 @@ use anyhow::format_err;
 mod device1;
 mod adapter1;
 
-use device1::ServiceData;
-
-
 #[derive(Debug, Clone, Copy, Serialize)]
 enum PreferredTemperature {
     C(Celsius),
@@ -64,7 +61,8 @@ impl std::fmt::Display for SwitchbotThermometer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "T={}, H={}, B={}",
+            "{}: T={}, H={}, B={}",
+            self.address,
             self.temperature(),
             self.humidity,
             self.battery,
@@ -74,6 +72,7 @@ impl std::fmt::Display for SwitchbotThermometer {
 
 #[derive(Clone, Debug, Serialize)]
 struct SwitchbotThermometer {
+    address: String,
     temperature: Celsius,
     fahrenheit: bool,
     humidity: u8,
@@ -131,16 +130,19 @@ impl SwitchbotThermometer {
 }
 
 static SWITCHBOT_DATA: &str = "00000d00-0000-1000-8000-00805f9b34fb";
-impl TryFrom<ServiceData> for SwitchbotThermometer {
+impl <'a> TryFrom<device1::Device1Proxy<'a>> for SwitchbotThermometer {
     type Error = anyhow::Error;
-    fn try_from(data: ServiceData) -> Result<Self, Self::Error> {
-        let bytes = data.get(SWITCHBOT_DATA)
+    fn try_from(device: device1::Device1Proxy) -> Result<Self, Self::Error> {
+        let service_data = device.service_data()?;
+        let address = device.address()?;
+        let bytes = service_data.get(SWITCHBOT_DATA)
             .ok_or(format_err!("no data at key {:?}", SWITCHBOT_DATA))?;
         let temperature = Self::decode_temperature(bytes)?;
         let humidity = Self::decode_humidity(bytes);
         let fahrenheit = Self::decode_temperature_unit(bytes);
         let battery = Self::decode_battery(bytes);
         let thermometer = SwitchbotThermometer {
+            address,
             temperature,
             fahrenheit,
             humidity,
@@ -156,20 +158,6 @@ fn main() -> anyhow::Result<()> {
 
     let adapter = adapter1::Adapter1Proxy::new(&system)?;
 
-    let filter = std::collections::HashMap::new();
-    /*
-    let uuids = vec![String::from(SWITCHBOT_DATA)];
-    filter.insert(
-        "UUIDs",
-        uuids.into(),
-    );
-    filter.insert(
-        "Transport",
-        "le".into(),
-    );
-    */
-    adapter.set_discovery_filter(filter)?;
-
     loop {
         let device = device1::Device1Proxy::new_for(
             &system,
@@ -183,19 +171,18 @@ fn main() -> anyhow::Result<()> {
             "/org/bluez/hci0/dev_F0_14_77_A4_77_3B",
         );
 
-        display_thermometer(device.ok().and_then(|d| d.service_data().ok()));
-        display_thermometer(device1.ok().and_then(|d| d.service_data().ok()));
+        display_thermometer(device.ok());
+        display_thermometer(device1.ok());
         if !adapter.discovering().unwrap_or_default() {
             adapter.start_discovery()?;
         }
         thread::sleep(Duration::from_secs(5));
     }
-
 }
 
-fn display_thermometer(data: Option<ServiceData>) -> Option<()> {
-    let data = data.and_then(|d| SwitchbotThermometer::try_from(d).ok());
-    if let Some(thermometer) = data {
+fn display_thermometer(device: Option<device1::Device1Proxy>) -> Option<()> {
+    let device = device.and_then(|d| SwitchbotThermometer::try_from(d).ok());
+    if let Some(thermometer) = device {
         println!("{}", thermometer);
     }
     Some(())
