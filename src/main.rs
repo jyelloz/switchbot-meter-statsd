@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     thread,
     time::Duration,
     convert::TryFrom,
@@ -36,20 +37,20 @@ impl From<Fahrenheit> for Celsius {
     }
 }
 
-impl std::fmt::Display for Celsius {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}C", self.0)
+impl fmt::Display for Celsius {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}°C", self.0)
     }
 }
 
-impl std::fmt::Display for Fahrenheit {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}F", self.0)
+impl fmt::Display for Fahrenheit {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}°F", self.0)
     }
 }
 
-impl std::fmt::Display for PreferredTemperature {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for PreferredTemperature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::C(value) => value.fmt(f),
             Self::F(value) => value.fmt(f),
@@ -57,11 +58,11 @@ impl std::fmt::Display for PreferredTemperature {
     }
 }
 
-impl std::fmt::Display for SwitchbotThermometer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for SwitchbotThermometer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}: T={}, H={}, B={}",
+            "{}: T={}, H={}%, B={}%",
             self.address,
             self.temperature(),
             self.humidity,
