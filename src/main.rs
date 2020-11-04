@@ -10,6 +10,9 @@ use anyhow::format_err;
 
 mod device1;
 mod adapter1;
+mod statsd_output;
+
+use device1::Device1Proxy;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 enum PreferredTemperature {
@@ -131,9 +134,9 @@ impl SwitchbotThermometer {
 }
 
 static SWITCHBOT_DATA: &str = "00000d00-0000-1000-8000-00805f9b34fb";
-impl <'a> TryFrom<device1::Device1Proxy<'a>> for SwitchbotThermometer {
+impl <'a> TryFrom<Device1Proxy<'a>> for SwitchbotThermometer {
     type Error = anyhow::Error;
-    fn try_from(device: device1::Device1Proxy) -> Result<Self, Self::Error> {
+    fn try_from(device: Device1Proxy) -> Result<Self, Self::Error> {
         let service_data = device.service_data()?;
         let address = device.address()?;
         let bytes = service_data.get(SWITCHBOT_DATA)
@@ -153,38 +156,65 @@ impl <'a> TryFrom<device1::Device1Proxy<'a>> for SwitchbotThermometer {
     }
 }
 
+fn get_update_frequency() -> Duration {
+
+    let seconds = std::env::args()
+        .skip(1)
+        .next()
+        .or(std::env::var("NETDATA_UPDATE_EVERY").ok())
+        .and_then(|value| u64::from_str_radix(&value, 10).ok())
+        .unwrap_or(1);
+
+    Duration::from_secs(seconds)
+}
+
 fn main() -> anyhow::Result<()> {
+
+    let update_frequency = get_update_frequency();
 
     let system = Connection::new_system()?;
 
     let adapter = adapter1::Adapter1Proxy::new(&system)?;
 
     loop {
-        let device = device1::Device1Proxy::new_for(
+        let device = Device1Proxy::new_for(
             &system,
             "org.bluez",
             "/org/bluez/hci0/dev_F0_73_23_10_C7_3E",
         );
 
-        let device1 = device1::Device1Proxy::new_for(
+        let device1 = Device1Proxy::new_for(
             &system,
             "org.bluez",
             "/org/bluez/hci0/dev_F0_14_77_A4_77_3B",
         );
 
-        display_thermometer(device.ok());
-        display_thermometer(device1.ok());
+        if let Some(err) = display_thermometer(device).err() {
+            eprintln!("error: {:?}", err);
+        }
+        if let Some(err) = display_thermometer(device1).err() {
+            eprintln!("error: {:?}", err);
+        }
         if !adapter.discovering().unwrap_or_default() {
             adapter.start_discovery()?;
         }
-        thread::sleep(Duration::from_secs(5));
+        thread::sleep(update_frequency);
     }
 }
 
-fn display_thermometer(device: Option<device1::Device1Proxy>) -> Option<()> {
-    let device = device.and_then(|d| SwitchbotThermometer::try_from(d).ok());
-    if let Some(thermometer) = device {
-        println!("{}", thermometer);
-    }
-    Some(())
+fn display_thermometer(device: Result<Device1Proxy, zbus::Error>) -> anyhow::Result<()> {
+
+    let device = device?;
+    let device = SwitchbotThermometer::try_from(device)?;
+    let device_id = device.address
+        .replace(":", "")
+        .to_ascii_lowercase();
+    statsd_output::statsd_output(
+        "switchbot",
+        &device_id,
+        (device.c().0 * 100f32) as u64,
+        device.humidity as u64,
+        device.battery as u64,
+    )?;
+    Ok(())
 }
