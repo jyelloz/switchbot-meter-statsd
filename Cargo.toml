@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 zbus = "1"
 zvariant = "2"
+zvariant_derive = "2"
 anyhow = "*"
 serde = "1"
 derivative = "2.1"
