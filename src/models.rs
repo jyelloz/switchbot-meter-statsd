@@ -1,3 +1,4 @@
+use std::fmt;
 use serde::{
     Serialize,
     Deserialize,
@@ -18,6 +19,40 @@ impl From<Celsius> for Fahrenheit {
 impl Into<f32> for Fahrenheit {
     fn into(self) -> f32 {
         self.0
+    }
+}
+
+impl fmt::Display for Celsius {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}°C", self.0)
+    }
+}
+
+impl fmt::Display for Fahrenheit {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}°F", self.0)
+    }
+}
+
+impl fmt::Display for PreferredTemperature {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::C(value) => value.fmt(f),
+            Self::F(value) => value.fmt(f),
+        }
+    }
+}
+
+impl fmt::Display for SwitchbotThermometer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}: T={}, H={}%, B={}%",
+            self.address,
+            self.temperature(),
+            self.humidity,
+            self.battery,
+        )
     }
 }
 
