@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+   fmt,
+   convert::TryFrom,
+};
 use serde::{
     Serialize,
     Deserialize,
@@ -132,4 +135,24 @@ impl SwitchbotThermometer {
         b2 & 0b0111_1111
     }
 
+}
+
+impl TryFrom<(String, &[u8])> for SwitchbotThermometer {
+    type Error = anyhow::Error;
+    fn try_from(data: (String, &[u8])) -> anyhow::Result<Self> {
+        let (address, bytes) = data;
+        let temperature = Self::decode_temperature(bytes)?;
+        let fahrenheit = Self::decode_temperature_unit(bytes);
+        let humidity = Self::decode_humidity(bytes);
+        let battery = Self::decode_battery(bytes);
+        Ok(
+            SwitchbotThermometer {
+                address,
+                temperature,
+                fahrenheit,
+                humidity,
+                battery,
+            }
+        )
+    }
 }
