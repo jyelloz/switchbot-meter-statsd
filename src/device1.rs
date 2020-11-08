@@ -49,8 +49,10 @@ impl TryFrom<OwnedValue> for ManufacturerData {
     }
 }
 
-#[allow(non_snake_case)]
-#[dbus_proxy(interface = "org.bluez.Device1")]
+#[dbus_proxy(
+    interface = "org.bluez.Device1",
+    default_service = "org.bluez",
+)]
 pub trait Device1 {
     /// CancelPairing method
     fn cancel_pairing(&self) -> zbus::Result<()>;
