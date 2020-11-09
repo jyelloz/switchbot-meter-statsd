@@ -19,6 +19,7 @@ use zvariant_derive::Type;
 use bluezadvertising::{
     models::SwitchbotThermometer,
     statsd_output::statsd_output,
+    adapter1::Adapter1Proxy,
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
@@ -114,6 +115,7 @@ struct PropertiesChanged {
 
 fn main() -> anyhow::Result<()> {
     let system = Connection::new_system()?;
+    let adapter = Adapter1Proxy::new(&system)?;
     {
         let dbus_proxy = DBusProxy::new(&system)?;
         dbus_proxy.add_match(
@@ -122,6 +124,7 @@ fn main() -> anyhow::Result<()> {
     }
     let proxy = Proxy { connection: &system };
     loop {
+        ensure_discovering(&adapter)?;
         proxy.poll(
             |event|
             match event {
@@ -151,4 +154,11 @@ fn main() -> anyhow::Result<()> {
             }
         )?;
     }
+}
+
+fn ensure_discovering(adapter: &Adapter1Proxy) -> anyhow::Result<()> {
+    if !adapter.discovering()? {
+        adapter.start_discovery()?;
+    }
+    Ok(())
 }
