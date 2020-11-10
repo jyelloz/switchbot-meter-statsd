@@ -1,5 +1,5 @@
 [package]
-name = "bluezadvertising"
+name = "switchbot-meter-statsd"
 version = "0.1.0"
 authors = ["Jordan Yelloz <jordan@yelloz.me>"]
 edition = "2018"
