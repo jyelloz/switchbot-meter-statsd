@@ -1,101 +1,172 @@
 use std::{
-    thread,
-    time::Duration,
+    convert::TryInto,
     convert::TryFrom,
+    collections::HashMap,
 };
-use zbus::Connection;
-use anyhow::format_err;
+use zbus::{
+    Connection,
+    MessageHeader,
+    MessageType,
+    fdo::DBusProxy,
+};
+use serde::{
+    Serialize,
+    Deserialize,
+};
+use zvariant::OwnedValue;
+use zvariant_derive::Type;
 
-mod device1;
 mod adapter1;
-mod statsd_output;
 mod models;
+mod statsd_output;
 
 use models::SwitchbotThermometer;
+use statsd_output::statsd_output;
+use adapter1::Adapter1Proxy;
 
-use device1::Device1Proxy;
+#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+struct ThermometerData {
+    data: Vec<u8>,
+}
 
-static SWITCHBOT_DATA: &str = "00000d00-0000-1000-8000-00805f9b34fb";
-impl <'a> TryFrom<Device1Proxy<'a>> for SwitchbotThermometer {
-    type Error = anyhow::Error;
-    fn try_from(device: Device1Proxy) -> Result<Self, Self::Error> {
-        let service_data = device.service_data()?;
-        let address = device.address()?;
-        let bytes = service_data.get(SWITCHBOT_DATA)
-            .ok_or(format_err!("no data at key {:?}", SWITCHBOT_DATA))?;
-        let temperature = Self::decode_temperature(bytes)?;
-        let humidity = Self::decode_humidity(bytes);
-        let fahrenheit = Self::decode_temperature_unit(bytes);
-        let battery = Self::decode_battery(bytes);
-        let thermometer = SwitchbotThermometer {
-            address,
-            temperature,
-            fahrenheit,
-            humidity,
-            battery,
-        };
-        Ok(thermometer)
+#[derive(Clone, Debug)]
+enum Event {
+    Updated(String, ThermometerData),
+}
+
+struct Proxy<'a> {
+    connection: &'a Connection,
+}
+
+static DEVICE_1: &str = "org.bluez.Device1";
+static PROPERTIES: &str = "org.freedesktop.DBus.Properties";
+static PROPERTIES_CHANGED: &str = "PropertiesChanged";
+static THERMOMETER_UUID: &str = "00000d00-0000-1000-8000-00805f9b34fb";
+
+impl <'a> Proxy<'a> {
+
+    fn is_signal(header: &MessageHeader) -> bool {
+        header.message_type()
+            .ok()
+            .filter(|t| *t == MessageType::Signal)
+            .is_some()
+    }
+
+    fn is_dbus_properties(header: &MessageHeader) -> bool {
+        header.interface()
+            .ok()
+            .and_then(|option| option)
+            .filter(|interface| *interface == PROPERTIES)
+            .is_some()
+    }
+
+    fn is_dbus_properties_changed(header: &MessageHeader) -> bool {
+        header.member()
+            .ok()
+            .and_then(|option| option)
+            .filter(|member| *member == PROPERTIES_CHANGED)
+            .is_some()
+    }
+
+    fn poll<F>(&self, callback: F) -> anyhow::Result<()>
+    where F: FnOnce(Event)
+    {
+        loop {
+            let msg = self.connection.receive_message()?;
+            let header = msg.header()?;
+            if !Self::is_signal(&header) {
+                continue;
+            }
+            if !Self::is_dbus_properties(&header) {
+                continue;
+            }
+            if !Self::is_dbus_properties_changed(&header) {
+                continue;
+            }
+            let mut body: PropertiesChanged = msg.body()?;
+            if DEVICE_1 != body.interface {
+                continue;
+            }
+            let path = header.path()?.unwrap();
+            let service_data = body.changed_properties.remove("ServiceData");
+            if let Some(service_data) = service_data {
+                let dict: zvariant::Dict = service_data.try_into()?;
+                let mut dict: HashMap<String, Vec<u8>> = dict.try_into()?;
+                let data = dict.remove(THERMOMETER_UUID);
+                if let Some(data) = data {
+                    callback(
+                        Event::Updated(
+                            path.as_str().into(),
+                            ThermometerData { data },
+                        )
+                    );
+                }
+            }
+            break;
+        }
+        Ok(())
     }
 }
 
-fn get_update_frequency() -> Duration {
-
-    let seconds = std::env::args()
-        .skip(1)
-        .next()
-        .or(std::env::var("NETDATA_UPDATE_EVERY").ok())
-        .and_then(|value| u64::from_str_radix(&value, 10).ok())
-        .unwrap_or(1);
-
-    Duration::from_secs(seconds)
+#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+struct PropertiesChanged {
+    interface: String,
+    changed_properties: HashMap<String, OwnedValue>,
+    invalidated_properties: Vec<String>,
 }
 
 fn main() -> anyhow::Result<()> {
-
-    let update_frequency = get_update_frequency();
-
     let system = Connection::new_system()?;
-
-    let adapter = adapter1::Adapter1Proxy::new(&system)?;
-
+    let adapter = Adapter1Proxy::new(&system)?;
+    {
+        let dbus_proxy = DBusProxy::new(&system)?;
+        dbus_proxy.add_match(
+            "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path_namespace='/org/bluez'"
+        )?;
+    }
+    let proxy = Proxy { connection: &system };
     loop {
-        let device = Device1Proxy::new_for(
-            &system,
-            "org.bluez",
-            "/org/bluez/hci0/dev_F0_73_23_10_C7_3E",
-        );
-
-        let device1 = Device1Proxy::new_for(
-            &system,
-            "org.bluez",
-            "/org/bluez/hci0/dev_F0_14_77_A4_77_3B",
-        );
-
-        if let Some(err) = display_thermometer(device).err() {
-            eprintln!("error: {:?}", err);
-        }
-        if let Some(err) = display_thermometer(device1).err() {
-            eprintln!("error: {:?}", err);
-        }
-        if !adapter.discovering().unwrap_or_default() {
-            adapter.start_discovery()?;
-        }
-        thread::sleep(update_frequency);
+        ensure_discovering(&adapter)?;
+        proxy.poll(
+            |event|
+            match event {
+                Event::Updated(path, data) => {
+                    let device_id = path.split("/")
+                        .last()
+                        .unwrap()
+                        .split("_")
+                        .skip(1)
+                        .collect::<Vec<&str>>()
+                        .join(":")
+                        .to_uppercase();
+                    let device = SwitchbotThermometer::try_from(
+                        (device_id.clone(), data.data.as_slice())
+                    ).unwrap();
+                    println!(
+                        "{} {} {} {}",
+                        &device_id,
+                        device.c().0,
+                        device.humidity,
+                        device.battery,
+                    );
+                    let device_id = device_id.replace(":", "")
+                        .to_ascii_lowercase();
+                    statsd_output(
+                        "switchbot",
+                        &device_id,
+                        (device.c().0 * 100f32) as u64,
+                        device.humidity as u64,
+                        device.battery as u64,
+                    ).ok();
+                }
+            }
+        )?;
     }
 }
 
-fn display_thermometer(device: Result<Device1Proxy, zbus::Error>) -> anyhow::Result<()> {
-
-    let device = SwitchbotThermometer::try_from(device?)?;
-    let device_id = device.address
-        .replace(":", "")
-        .to_ascii_lowercase();
-    statsd_output::statsd_output(
-        "switchbot",
-        &device_id,
-        (device.c().0 * 100f32) as u64,
-        device.humidity as u64,
-        device.battery as u64,
-    )?;
+fn ensure_discovering(adapter: &Adapter1Proxy) -> anyhow::Result<()> {
+    if !adapter.discovering()? {
+        adapter.start_discovery()?;
+    }
     Ok(())
 }
