@@ -140,7 +140,13 @@ fn main() -> anyhow::Result<()> {
                     let device = SwitchbotThermometer::try_from(
                         (device_id.clone(), data.data.as_slice())
                     ).unwrap();
-                    println!("{:?}", device);
+                    println!(
+                        "{} {} {} {}",
+                        &device_id,
+                        device.c().0,
+                        device.humidity,
+                        device.battery,
+                    );
                     let device_id = device_id.replace(":", "")
                         .to_ascii_lowercase();
                     statsd_output(
