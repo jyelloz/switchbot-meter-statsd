@@ -28,6 +28,12 @@ struct ThermometerData {
     data: Vec<u8>,
 }
 
+impl std::convert::From<Vec<u8>> for ThermometerData {
+    fn from(data: Vec<u8>) -> Self {
+        Self { data }
+    }
+}
+
 #[derive(Clone, Debug)]
 enum Event {
     Updated(String, ThermometerData),
@@ -47,6 +53,7 @@ struct Proxy<'a> {
 static DEVICE_1: &str = "org.bluez.Device1";
 static PROPERTIES: &str = "org.freedesktop.DBus.Properties";
 static PROPERTIES_CHANGED: &str = "PropertiesChanged";
+static SERVICE_DATA: &str = "ServiceData";
 static THERMOMETER_UUID: &str = "00000d00-0000-1000-8000-00805f9b34fb";
 
 impl <'a> Proxy<'a> {
@@ -94,18 +101,14 @@ impl <'a> Proxy<'a> {
                 continue;
             }
             let path = header.path()?.unwrap();
-            let service_data = body.changed_properties.remove("ServiceData");
+            let service_data = body.changed_properties.remove(SERVICE_DATA);
             if let Some(service_data) = service_data {
                 let dict: zvariant::Dict = service_data.try_into()?;
                 let mut dict: HashMap<String, Vec<u8>> = dict.try_into()?;
-                let data = dict.remove(THERMOMETER_UUID);
+                let data = dict.remove(THERMOMETER_UUID)
+                    .map(ThermometerData::from);
                 if let Some(data) = data {
-                    callback(
-                        Event::Updated(
-                            path.as_str().into(),
-                            ThermometerData { data },
-                        )
-                    );
+                    callback(Event::Updated(path.as_str().into(), data));
                 }
             }
             break;
