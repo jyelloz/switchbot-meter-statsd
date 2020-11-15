@@ -7,7 +7,7 @@ use zbus::{
     Connection,
     MessageHeader,
     MessageType,
-    fdo::DBusProxy,
+    fdo,
 };
 use serde::{
     Serialize,
@@ -22,7 +22,6 @@ mod statsd_output;
 
 use models::SwitchbotThermometer;
 use statsd_output::statsd_output;
-use adapter1::Adapter1Proxy;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
 struct ThermometerData {
@@ -117,9 +116,9 @@ impl <'a> Proxy<'a> {
 
 fn main() -> anyhow::Result<()> {
     let system = Connection::new_system()?;
-    let adapter = Adapter1Proxy::new(&system)?;
+    let adapter = adapter1::Adapter1Proxy::new(&system)?;
     {
-        let dbus_proxy = DBusProxy::new(&system)?;
+        let dbus_proxy = fdo::DBusProxy::new(&system)?;
         dbus_proxy.add_match(
             "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path_namespace='/org/bluez'"
         )?;
@@ -164,7 +163,7 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn ensure_discovering(adapter: &Adapter1Proxy) -> anyhow::Result<()> {
+fn ensure_discovering(adapter: &adapter1::Adapter1Proxy) -> anyhow::Result<()> {
     if !adapter.discovering()? {
         adapter.start_discovery()?;
     }
