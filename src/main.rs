@@ -34,6 +34,13 @@ enum Event {
     Updated(String, ThermometerData),
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+struct PropertiesChanged {
+    interface: String,
+    changed_properties: HashMap<String, OwnedValue>,
+    invalidated_properties: Vec<String>,
+}
+
 struct Proxy<'a> {
     connection: &'a Connection,
 }
@@ -106,13 +113,6 @@ impl <'a> Proxy<'a> {
         }
         Ok(())
     }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, Type)]
-struct PropertiesChanged {
-    interface: String,
-    changed_properties: HashMap<String, OwnedValue>,
-    invalidated_properties: Vec<String>,
 }
 
 fn main() -> anyhow::Result<()> {
