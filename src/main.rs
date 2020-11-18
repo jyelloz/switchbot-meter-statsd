@@ -1,7 +1,11 @@
 use std::{
-    convert::TryInto,
-    convert::TryFrom,
+    convert::{
+        TryInto,
+        TryFrom,
+    },
     collections::HashMap,
+    thread,
+    time::Duration,
 };
 use zbus::{
     Connection,
@@ -119,7 +123,7 @@ impl <'a> Proxy<'a> {
 
 fn main() -> anyhow::Result<()> {
     let system = Connection::new_system()?;
-    let adapter = adapter1::Adapter1Proxy::new(&system)?;
+    thread::spawn(ensure_discovering_task);
     {
         let dbus_proxy = fdo::DBusProxy::new(&system)?;
         dbus_proxy.add_match(
@@ -128,7 +132,6 @@ fn main() -> anyhow::Result<()> {
     }
     let proxy = Proxy { connection: &system };
     loop {
-        ensure_discovering(&adapter)?;
         proxy.poll(
             |event|
             match event {
@@ -163,6 +166,18 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         )?;
+    }
+}
+
+fn ensure_discovering_task() {
+    let system = Connection::new_system().unwrap();
+    let adapter = adapter1::Adapter1Proxy::new(&system).unwrap();
+    loop {
+        match ensure_discovering(&adapter) {
+            Err(e) => eprintln!("could not ensure discovering: {:?}", e),
+            _ => {},
+        }
+        thread::sleep(Duration::from_secs(30));
     }
 }
 
