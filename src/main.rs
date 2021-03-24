@@ -182,6 +182,9 @@ fn ensure_discovering_task() {
 }
 
 fn ensure_discovering(adapter: &adapter1::Adapter1Proxy) -> anyhow::Result<()> {
+    if !adapter.powered()? {
+        adapter.set_powered(true)?;
+    }
     if !adapter.discovering()? {
         adapter.start_discovery()?;
     }
