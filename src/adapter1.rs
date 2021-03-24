@@ -35,7 +35,7 @@ pub trait Adapter1 {
     /// Alias property
     #[dbus_proxy(property)]
     fn alias(&self) -> zbus::fdo::Result<String>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_alias(&self, value: &str) -> zbus::fdo::Result<()>;
 
     /// Class property
@@ -45,13 +45,13 @@ pub trait Adapter1 {
     /// Discoverable property
     #[dbus_proxy(property)]
     fn discoverable(&self) -> zbus::fdo::Result<bool>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_discoverable(&self, value: bool) -> zbus::fdo::Result<()>;
 
     /// DiscoverableTimeout property
     #[dbus_proxy(property)]
     fn discoverable_timeout(&self) -> zbus::fdo::Result<u32>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_discoverable_timeout(&self, value: u32) -> zbus::fdo::Result<()>;
 
     /// Discovering property
@@ -69,19 +69,19 @@ pub trait Adapter1 {
     /// Pairable property
     #[dbus_proxy(property)]
     fn pairable(&self) -> zbus::fdo::Result<bool>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_pairable(&self, value: bool) -> zbus::fdo::Result<()>;
 
     /// PairableTimeout property
     #[dbus_proxy(property)]
     fn pairable_timeout(&self) -> zbus::fdo::Result<u32>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_pairable_timeout(&self, value: u32) -> zbus::fdo::Result<()>;
 
     /// Powered property
     #[dbus_proxy(property)]
     fn powered(&self) -> zbus::fdo::Result<bool>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_powered(&self, value: bool) -> zbus::fdo::Result<()>;
 
     /// Roles property
