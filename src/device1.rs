@@ -87,7 +87,7 @@ pub trait Device1 {
     /// Alias property
     #[dbus_proxy(property)]
     fn alias(&self) -> zbus::fdo::Result<String>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_alias(&self, value: &str) -> zbus::fdo::Result<()>;
 
     /// Appearance property
@@ -97,7 +97,7 @@ pub trait Device1 {
     /// Blocked property
     #[dbus_proxy(property)]
     fn blocked(&self) -> zbus::fdo::Result<bool>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_blocked(&self, value: bool) -> zbus::fdo::Result<()>;
 
     /// Class property
@@ -151,7 +151,7 @@ pub trait Device1 {
     /// Trusted property
     #[dbus_proxy(property)]
     fn trusted(&self) -> zbus::fdo::Result<bool>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_trusted(&self, value: bool) -> zbus::fdo::Result<()>;
 
     /// TxPower property
@@ -165,6 +165,6 @@ pub trait Device1 {
     /// WakeAllowed property
     #[dbus_proxy(property)]
     fn wake_allowed(&self) -> zbus::fdo::Result<bool>;
-    #[DBusProxy(property)]
+    #[dbus_proxy(property)]
     fn set_wake_allowed(&self, value: bool) -> zbus::fdo::Result<()>;
 }
