@@ -121,6 +121,17 @@ impl <'a> Proxy<'a> {
     }
 }
 
+fn mac_address_from_dbus_path(path: &str) -> String {
+    path.split("/")
+        .last()
+        .unwrap()
+        .split("_")
+        .skip(1)
+        .collect::<Vec<&str>>()
+        .join(":")
+        .to_uppercase()
+}
+
 fn main() -> anyhow::Result<()> {
     let system = Connection::new_system()?;
     thread::spawn(ensure_discovering_task);
@@ -136,14 +147,7 @@ fn main() -> anyhow::Result<()> {
             |event|
             match event {
                 Event::Updated(path, data) => {
-                    let device_id = path.split("/")
-                        .last()
-                        .unwrap()
-                        .split("_")
-                        .skip(1)
-                        .collect::<Vec<&str>>()
-                        .join(":")
-                        .to_uppercase();
+                    let device_id = mac_address_from_dbus_path(&path);
                     let device = SwitchbotThermometer::try_from(
                         (device_id.clone(), data.data.as_slice())
                     ).unwrap();
@@ -170,12 +174,12 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn ensure_discovering_task() {
-    let system = Connection::new_system().unwrap();
+    let system = Connection::new_system()
+        .expect("failed to get system connection");
     let adapter = adapter1::Adapter1Proxy::new(&system).unwrap();
     loop {
-        match ensure_discovering(&adapter) {
-            Err(e) => eprintln!("could not ensure discovering: {:?}", e),
-            _ => {},
+        if let Err(e) = ensure_discovering(&adapter) {
+            eprintln!("failed to ensure adapter is discovering: {:?}", e);
         }
         thread::sleep(Duration::from_secs(30));
     }
