@@ -24,8 +24,11 @@ mod adapter1;
 mod models;
 mod statsd_output;
 
-use models::SwitchbotThermometer;
-use statsd_output::statsd_output;
+use models::{
+    SwitchbotThermometer,
+    Reporter as _,
+};
+use statsd_output::StatsdReporter;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
 struct ThermometerData {
@@ -142,6 +145,7 @@ fn main() -> anyhow::Result<()> {
         )?;
     }
     let proxy = Proxy { connection: &system };
+    let statsd = StatsdReporter::try_default()?;
     loop {
         proxy.poll(
             |event|
@@ -158,15 +162,7 @@ fn main() -> anyhow::Result<()> {
                         device.humidity,
                         device.battery,
                     );
-                    let device_id = device_id.replace(":", "")
-                        .to_ascii_lowercase();
-                    statsd_output(
-                        "switchbot",
-                        &device_id,
-                        (device.c().0 * 100f32) as u64,
-                        device.humidity as u64,
-                        device.battery as u64,
-                    ).ok();
+                    statsd.report(&device).ok();
                 }
             }
         )?;

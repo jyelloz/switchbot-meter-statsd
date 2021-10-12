@@ -156,3 +156,8 @@ impl TryFrom<(String, &[u8])> for SwitchbotThermometer {
         )
     }
 }
+
+pub type ReportResult = anyhow::Result<()>;
+pub trait Reporter {
+    fn report(&self, device: &SwitchbotThermometer) -> ReportResult;
+}

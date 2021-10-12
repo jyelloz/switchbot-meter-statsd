@@ -5,26 +5,55 @@ use cadence::{
     UdpMetricSink,
     DEFAULT_PORT,
 };
+use crate::models::{
+    Reporter,
+    ReportResult,
+    SwitchbotThermometer,
+};
 
-pub fn statsd_output(
-    prefix: &str,
-    device_id: &str,
-    temperature: u64,
-    humidity: u64,
-    battery: u64,
-) -> anyhow::Result<()> {
+pub type InitResult = anyhow::Result<StatsdReporter>;
 
-    let host = ("127.0.0.1", DEFAULT_PORT);
-    let socket = UdpSocket::bind("0.0.0.0:0")?;
-    let sink = UdpMetricSink::from(host, socket)?;
-    let metrics = StatsdClient::from_sink(prefix, sink);
+pub struct StatsdReporter {
+    metrics: StatsdClient,
+}
 
-    output_temperature(&metrics, device_id, temperature)?;
-    output_humidity(&metrics, device_id, humidity)?;
-    output_battery(&metrics, device_id, battery)?;
+impl StatsdReporter {
+    pub fn try_default() -> InitResult {
+        Self::try_default_prefixed("switchbot")
+    }
+    pub fn try_default_prefixed(prefix: &str) -> InitResult {
+        let host = ("127.0.0.1", DEFAULT_PORT);
+        let socket = UdpSocket::bind("0.0.0.0:0")?;
+        let sink = UdpMetricSink::from(host, socket)?;
+        let metrics = StatsdClient::from_sink(prefix, sink);
+        Ok(Self { metrics })
+    }
+}
 
-    Ok(())
+impl Reporter for StatsdReporter {
+    fn report(&self, device: &SwitchbotThermometer) -> ReportResult {
+        let Self { metrics } = self;
 
+        let SwitchbotThermometer {
+            address,
+            humidity,
+            battery,
+            ..
+        } = device;
+
+        let device_id = address.replace(":", "")
+            .to_ascii_lowercase();
+
+        let temperature = (device.c().0 * 100f32) as u64;
+        let humidity = *humidity as u64;
+        let battery = *battery as u64;
+
+        output_temperature(metrics, &device_id, temperature)?;
+        output_humidity(metrics, &device_id, humidity)?;
+        output_battery(metrics, &device_id, battery)?;
+
+        Ok(())
+    }
 }
 
 fn output_temperature(
