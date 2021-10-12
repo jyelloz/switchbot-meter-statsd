@@ -3,6 +3,7 @@ name = "switchbot-meter-statsd"
 version = "0.1.0"
 authors = ["Jordan Yelloz <jordan@yelloz.me>"]
 edition = "2018"
+license = "MIT"
 
 [dependencies]
 zbus = "1"
