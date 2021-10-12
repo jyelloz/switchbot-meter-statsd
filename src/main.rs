@@ -172,7 +172,8 @@ fn main() -> anyhow::Result<()> {
 fn ensure_discovering_task() {
     let system = Connection::new_system()
         .expect("failed to get system connection");
-    let adapter = adapter1::Adapter1Proxy::new(&system).unwrap();
+    let adapter = adapter1::Adapter1Proxy::new(&system)
+        .expect("failed to get Bluetooth Adapter proxy");
     loop {
         if let Err(e) = ensure_discovering(&adapter) {
             eprintln!("failed to ensure adapter is discovering: {:?}", e);
