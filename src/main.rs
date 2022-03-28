@@ -8,18 +8,24 @@ use std::{
     time::Duration,
 };
 use zbus::{
-    Connection,
     MessageHeader,
     MessageType,
-    fdo,
+    blocking::{
+        Connection,
+        fdo,
+    },
+    zvariant::{
+        Dict,
+        OwnedValue,
+        Type,
+    },
 };
 use serde::{
     Serialize,
     Deserialize,
 };
-use zvariant::OwnedValue;
-use zvariant_derive::Type;
 
+#[allow(non_snake_case)]
 mod adapter1;
 mod models;
 mod statsd_output;
@@ -53,8 +59,8 @@ struct PropertiesChanged {
     invalidated_properties: Vec<String>,
 }
 
-struct Proxy<'a> {
-    connection: &'a Connection,
+struct Proxy {
+    messages: zbus::blocking::MessageIterator,
 }
 
 static DEVICE_1: &str = "org.bluez.Device1";
@@ -63,7 +69,7 @@ static PROPERTIES_CHANGED: &str = "PropertiesChanged";
 static SERVICE_DATA: &str = "ServiceData";
 static THERMOMETER_UUID: &str = "00000d00-0000-1000-8000-00805f9b34fb";
 
-impl <'a> Proxy<'a> {
+impl Proxy {
 
     fn is_signal(header: &MessageHeader) -> bool {
         header.message_type()
@@ -88,11 +94,15 @@ impl <'a> Proxy<'a> {
             .is_some()
     }
 
-    fn poll<F>(&self, callback: F) -> anyhow::Result<()>
+    fn poll<F>(&mut self, callback: F) -> anyhow::Result<()>
     where F: FnOnce(Event)
     {
         loop {
-            let msg = self.connection.receive_message()?;
+            let msg = self.messages.next();
+            if msg.is_none() {
+                continue;
+            }
+            let msg = msg.unwrap()?;
             let header = msg.header()?;
             if !Self::is_signal(&header) {
                 continue;
@@ -110,7 +120,7 @@ impl <'a> Proxy<'a> {
             let path = header.path()?.unwrap();
             let service_data = body.changed_properties.remove(SERVICE_DATA);
             if let Some(service_data) = service_data {
-                let dict: zvariant::Dict = service_data.try_into()?;
+                let dict: Dict = service_data.try_into()?;
                 let mut dict: HashMap<String, Vec<u8>> = dict.try_into()?;
                 let data = dict.remove(THERMOMETER_UUID)
                     .map(ThermometerData::from);
@@ -136,7 +146,7 @@ fn mac_address_from_dbus_path(path: &str) -> String {
 }
 
 fn main() -> anyhow::Result<()> {
-    let system = Connection::new_system()?;
+    let system = Connection::system()?;
     thread::spawn(ensure_discovering_task);
     {
         let dbus_proxy = fdo::DBusProxy::new(&system)?;
@@ -144,7 +154,7 @@ fn main() -> anyhow::Result<()> {
             "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path_namespace='/org/bluez'"
         )?;
     }
-    let proxy = Proxy { connection: &system };
+    let mut proxy = Proxy { messages: system.into() };
     let statsd = StatsdReporter::try_default()?;
     loop {
         proxy.poll(
@@ -170,9 +180,14 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn ensure_discovering_task() {
-    let system = Connection::new_system()
+    let system = Connection::system()
         .expect("failed to get system connection");
-    let adapter = adapter1::Adapter1Proxy::new(&system)
+    let adapter = adapter1::Adapter1ProxyBlocking::builder(&system)
+        .destination("org.bluez")
+        .expect("failed to set destination")
+        .path("/org/bluez/hci0")
+        .expect("failed to set path")
+        .build()
         .expect("failed to get Bluetooth Adapter proxy");
     loop {
         if let Err(e) = ensure_discovering(&adapter) {
@@ -182,7 +197,7 @@ fn ensure_discovering_task() {
     }
 }
 
-fn ensure_discovering(adapter: &adapter1::Adapter1Proxy) -> anyhow::Result<()> {
+fn ensure_discovering(adapter: &adapter1::Adapter1ProxyBlocking) -> anyhow::Result<()> {
     if !adapter.powered()? {
         adapter.set_powered(true)?;
     }

@@ -2,13 +2,11 @@
 name = "switchbot-meter-statsd"
 version = "0.1.0"
 authors = ["Jordan Yelloz <jordan@yelloz.me>"]
-edition = "2018"
+edition = "2021"
 license = "MIT"
 
 [dependencies]
-zbus = "1"
-zvariant = "2"
-zvariant_derive = "2"
+zbus = "2"
 anyhow = "*"
 serde = "1"
 cadence = "0.22"
