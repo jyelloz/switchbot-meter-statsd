@@ -8,9 +8,11 @@ use std::{
     time::Duration,
 };
 use zbus::{
+    Message,
     MessageHeader,
     MessageType,
     blocking::{
+        MessageIterator,
         Connection,
         fdo,
     },
@@ -18,12 +20,15 @@ use zbus::{
         Dict,
         OwnedValue,
         Type,
+        ObjectPath,
     },
 };
 use serde::{
     Serialize,
     Deserialize,
 };
+use anyhow::anyhow;
+use thiserror::Error;
 
 #[allow(non_snake_case)]
 mod adapter1;
@@ -47,6 +52,16 @@ impl std::convert::From<Vec<u8>> for ThermometerData {
     }
 }
 
+#[derive(Error, Debug, Clone)]
+enum EventConvertError {
+    #[error("failed to parse DBus message: {0:?}")]
+    MessageParsing(&'static str),
+    #[error("property changed was on wrong interface {0:?}")]
+    InterfaceMismatch(String),
+    #[error("thermometer data missing")]
+    ThermometerDataMissing,
+}
+
 #[derive(Clone, Debug)]
 enum Event {
     Updated(String, ThermometerData),
@@ -59,8 +74,54 @@ struct PropertiesChanged {
     invalidated_properties: Vec<String>,
 }
 
-struct Proxy {
+impl TryFrom<&Message> for Event {
+    type Error = EventConvertError;
+    fn try_from(msg: &Message) -> Result<Self, Self::Error> {
+        let path = msg.path()
+            .ok_or(EventConvertError::MessageParsing("path"))?;
+        let body: PropertiesChanged = msg.body()
+            .map_err(|_| EventConvertError::MessageParsing("body"))?;
+        (path, body).try_into()
+    }
+}
+
+impl TryFrom<(ObjectPath<'_>, PropertiesChanged)> for Event {
+    type Error = EventConvertError;
+    fn try_from(item: (ObjectPath<'_>, PropertiesChanged)) -> Result<Self, Self::Error> {
+        let (path, mut body) = item;
+        let path = path.to_string();
+        if body.interface != DEVICE_1 {
+            Err(EventConvertError::InterfaceMismatch(body.interface.clone()))?;
+        }
+        let dict: Dict = body.changed_properties.remove(SERVICE_DATA)
+            .ok_or(EventConvertError::MessageParsing(SERVICE_DATA))?
+            .try_into()
+            .map_err(|_| EventConvertError::MessageParsing(SERVICE_DATA))?;
+        let mut dict: HashMap<String, Vec<u8>> = dict.try_into()
+            .map_err(|_| EventConvertError::MessageParsing("HashMap"))?;
+        return dict.remove(THERMOMETER_UUID)
+            .map(ThermometerData::from)
+            .map(|data| Event::Updated(path, data))
+            .ok_or(EventConvertError::ThermometerDataMissing);
+    }
+}
+
+struct PropertiesChangedIterator {
     messages: zbus::blocking::MessageIterator,
+}
+
+impl PropertiesChangedIterator {
+    pub fn system() -> anyhow::Result<Self> {
+        let system = Connection::system()?;
+        {
+            let dbus_proxy = fdo::DBusProxy::new(&system)?;
+            dbus_proxy.add_match(
+                "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path_namespace='/org/bluez'"
+            )?;
+        }
+        let messages =  MessageIterator::from(system);
+        Ok(Self { messages })
+    }
 }
 
 static DEVICE_1: &str = "org.bluez.Device1";
@@ -69,69 +130,57 @@ static PROPERTIES_CHANGED: &str = "PropertiesChanged";
 static SERVICE_DATA: &str = "ServiceData";
 static THERMOMETER_UUID: &str = "00000d00-0000-1000-8000-00805f9b34fb";
 
-impl Proxy {
+impl std::iter::Iterator for PropertiesChangedIterator {
+    type Item = std::sync::Arc<Message>;
 
-    fn is_signal(header: &MessageHeader) -> bool {
+    fn next(&mut self) -> Option<Self::Item> {
+        let Self { messages } = self;
+        loop {
+            let msg = messages.next()?
+                .map_err(|e| anyhow!(e))
+                .map(|m| PropertiesChangedIterator::filter(m))
+                .ok()??;
+            return Some(msg);
+        }
+    }
+
+}
+
+impl PropertiesChangedIterator {
+
+    fn filter<M: std::ops::Deref<Target=Message>>(msg: M) -> Option<M> {
+        msg.header()
+            .ok()
+            .and_then(Self::is_signal)
+            .and_then(Self::is_dbus_properties)
+            .and_then(Self::is_dbus_properties_changed)?;
+        Some(msg)
+    }
+
+
+    fn is_signal<'a>(header: MessageHeader<'a>) -> Option<MessageHeader<'a>> {
         header.message_type()
             .ok()
-            .filter(|t| *t == MessageType::Signal)
-            .is_some()
+            .filter(|t| *t == MessageType::Signal)?;
+        Some(header)
     }
 
-    fn is_dbus_properties(header: &MessageHeader) -> bool {
+    fn is_dbus_properties<'a>(header: MessageHeader<'a>) -> Option<MessageHeader<'a>> {
         header.interface()
             .ok()
-            .and_then(|option| option)
-            .filter(|interface| *interface == PROPERTIES)
-            .is_some()
+            .flatten()
+            .filter(|i| *i == PROPERTIES)?;
+        Some(header)
     }
 
-    fn is_dbus_properties_changed(header: &MessageHeader) -> bool {
+    fn is_dbus_properties_changed<'a>(header: MessageHeader<'a>) -> Option<MessageHeader<'a>> {
         header.member()
             .ok()
-            .and_then(|option| option)
-            .filter(|member| *member == PROPERTIES_CHANGED)
-            .is_some()
+            .flatten()
+            .filter(|m| *m == PROPERTIES_CHANGED)?;
+        Some(header)
     }
 
-    fn poll<F>(&mut self, callback: F) -> anyhow::Result<()>
-    where F: FnOnce(Event)
-    {
-        loop {
-            let msg = self.messages.next();
-            if msg.is_none() {
-                continue;
-            }
-            let msg = msg.unwrap()?;
-            let header = msg.header()?;
-            if !Self::is_signal(&header) {
-                continue;
-            }
-            if !Self::is_dbus_properties(&header) {
-                continue;
-            }
-            if !Self::is_dbus_properties_changed(&header) {
-                continue;
-            }
-            let mut body: PropertiesChanged = msg.body()?;
-            if DEVICE_1 != body.interface {
-                continue;
-            }
-            let path = header.path()?.unwrap();
-            let service_data = body.changed_properties.remove(SERVICE_DATA);
-            if let Some(service_data) = service_data {
-                let dict: Dict = service_data.try_into()?;
-                let mut dict: HashMap<String, Vec<u8>> = dict.try_into()?;
-                let data = dict.remove(THERMOMETER_UUID)
-                    .map(ThermometerData::from);
-                if let Some(data) = data {
-                    callback(Event::Updated(path.as_str().into(), data));
-                }
-            }
-            break;
-        }
-        Ok(())
-    }
 }
 
 fn mac_address_from_dbus_path(path: &str) -> String {
@@ -146,37 +195,28 @@ fn mac_address_from_dbus_path(path: &str) -> String {
 }
 
 fn main() -> anyhow::Result<()> {
-    let system = Connection::system()?;
     thread::spawn(ensure_discovering_task);
-    {
-        let dbus_proxy = fdo::DBusProxy::new(&system)?;
-        dbus_proxy.add_match(
-            "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path_namespace='/org/bluez'"
-        )?;
-    }
-    let mut proxy = Proxy { messages: system.into() };
     let statsd = StatsdReporter::try_default()?;
-    loop {
-        proxy.poll(
-            |event|
-            match event {
-                Event::Updated(path, data) => {
-                    let device_id = mac_address_from_dbus_path(&path);
-                    let device = SwitchbotThermometer::try_from(
-                        (device_id.clone(), data.data.as_slice())
-                    ).unwrap();
-                    println!(
-                        "{} {} {} {}",
-                        &device_id,
-                        device.c().0,
-                        device.humidity,
-                        device.battery,
-                    );
-                    statsd.report(&device).ok();
-                }
-            }
-        )?;
+    let events = PropertiesChangedIterator::system()?
+        .map(|m| Event::try_from(&*m))
+        .filter(|e| e.is_ok());
+    for event in events {
+        if let Ok(Event::Updated(path, data)) = event {
+            let device_id = mac_address_from_dbus_path(&path);
+            let device = SwitchbotThermometer::try_from(
+                (device_id.clone(), data.data.as_slice())
+            )?;
+            println!(
+                "{} {} {} {}",
+                &device_id,
+                device.c().0,
+                device.humidity,
+                device.battery,
+            );
+            statsd.report(&device).ok();
+        }
     }
+    Ok(())
 }
 
 fn ensure_discovering_task() {
