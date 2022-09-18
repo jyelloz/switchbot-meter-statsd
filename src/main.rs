@@ -147,7 +147,6 @@ impl std::iter::Iterator for PropertiesChangedIterator {
 }
 
 impl PropertiesChangedIterator {
-
     fn filter<M: std::ops::Deref<Target=Message>>(msg: M) -> Option<M> {
         msg.header()
             .ok()
@@ -156,7 +155,6 @@ impl PropertiesChangedIterator {
             .and_then(Self::is_dbus_properties_changed)?;
         Some(msg)
     }
-
 
     fn is_signal<'a>(header: MessageHeader<'a>) -> Option<MessageHeader<'a>> {
         header.message_type()
@@ -180,7 +178,6 @@ impl PropertiesChangedIterator {
             .filter(|m| *m == PROPERTIES_CHANGED)?;
         Some(header)
     }
-
 }
 
 fn mac_address_from_dbus_path(path: &str) -> String {
