@@ -31,7 +31,7 @@ use serde::{
 use thiserror::Error;
 
 #[allow(non_snake_case)]
-mod adapter1;
+mod bluez;
 mod models;
 mod statsd_output;
 
@@ -40,6 +40,9 @@ use models::{
     Reporter as _,
 };
 use statsd_output::StatsdReporter;
+mod adapter1 {
+    pub use super::bluez::Adapter1ProxyBlocking;
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
 struct ThermometerData {
