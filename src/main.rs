@@ -99,10 +99,10 @@ impl TryFrom<(ObjectPath<'_>, PropertiesChanged)> for Event {
             .map_err(|_| EventConvertError::MessageParsing(SERVICE_DATA))?;
         let mut dict: HashMap<String, Vec<u8>> = dict.try_into()
             .map_err(|_| EventConvertError::MessageParsing("HashMap"))?;
-        return dict.remove(THERMOMETER_UUID)
+        dict.remove(THERMOMETER_UUID)
             .map(ThermometerData::from)
             .map(|data| Event::Updated(path, data))
-            .ok_or(EventConvertError::ThermometerDataMissing);
+            .ok_or(EventConvertError::ThermometerDataMissing)
     }
 }
 
@@ -201,21 +201,19 @@ fn main() -> anyhow::Result<()> {
     let events = PropertiesChangedIterator::system()?
         .map(|m| Event::try_from(&*m))
         .filter(|e| e.is_ok());
-    for event in events {
-        if let Ok(Event::Updated(path, data)) = event {
-            let device_id = mac_address_from_dbus_path(&path);
-            let device = SwitchbotThermometer::try_from(
-                (device_id.clone(), data.data.as_slice())
-            )?;
-            println!(
-                "{} {} {} {}",
-                &device_id,
-                device.c().0,
-                device.humidity,
-                device.battery,
-            );
-            statsd.report(&device).ok();
-        }
+    for Event::Updated(path, data) in events.flatten() {
+        let device_id = mac_address_from_dbus_path(&path);
+        let device = SwitchbotThermometer::try_from(
+            (device_id.clone(), data.data.as_slice())
+        )?;
+        println!(
+            "{} {} {} {}",
+            &device_id,
+            device.c().0,
+            device.humidity,
+            device.battery,
+        );
+        statsd.report(&device).ok();
     }
     Ok(())
 }
