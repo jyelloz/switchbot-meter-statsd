@@ -27,7 +27,6 @@ use serde::{
     Serialize,
     Deserialize,
 };
-use anyhow::anyhow;
 use thiserror::Error;
 
 #[allow(non_snake_case)]
@@ -136,11 +135,11 @@ impl std::iter::Iterator for PropertiesChangedIterator {
     fn next(&mut self) -> Option<Self::Item> {
         let Self { messages } = self;
         loop {
-            let msg = messages.next()?
-                .map_err(|e| anyhow!(e))
-                .map(|m| PropertiesChangedIterator::filter(m))
-                .ok()??;
-            return Some(msg);
+            let msg = messages.next()?;
+            let msg = msg.ok().and_then(Self::filter);
+            if msg.is_some() {
+                return msg;
+            }
         }
     }
 
