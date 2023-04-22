@@ -191,7 +191,7 @@ fn mac_address_from_dbus_path(path: &str) -> String {
 }
 
 fn main() -> anyhow::Result<()> {
-    thread::spawn(ensure_discovering_task);
+    spawn_ensure_discovering()?;
     let statsd = StatsdReporter::try_default()?;
     let events = PropertiesChangedIterator::system()?
         .map(|m| Event::try_from(&*m))
@@ -215,16 +215,17 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn ensure_discovering_task() {
-    let system = Connection::system()
-        .expect("failed to get system connection");
-    let adapter = adapter1::Adapter1ProxyBlocking::builder(&system)
-        .destination("org.bluez")
-        .expect("failed to set destination")
-        .path("/org/bluez/hci0")
-        .expect("failed to set path")
-        .build()
-        .expect("failed to get Bluetooth Adapter proxy");
+fn spawn_ensure_discovering() -> anyhow::Result<()> {
+    let connection = Connection::system()?;
+    let adapter = adapter1::Adapter1ProxyBlocking::builder(&connection)
+        .destination("org.bluez")?
+        .path("/org/bluez/hci0")?
+        .build()?;
+    thread::spawn(move || ensure_discovering_task(adapter));
+    Ok(())
+}
+
+fn ensure_discovering_task(adapter: adapter1::Adapter1ProxyBlocking) {
     loop {
         if let Err(e) = ensure_discovering(&adapter) {
             eprintln!("failed to ensure adapter is discovering: {:?}", e);
