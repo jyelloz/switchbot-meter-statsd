@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 use zbus::{
+    MatchRule,
     Message,
     MessageHeader,
     MessageType,
@@ -114,11 +115,15 @@ impl PropertiesChangedIterator {
         let system = Connection::system()?;
         {
             let dbus_proxy = fdo::DBusProxy::new(&system)?;
-            dbus_proxy.add_match(
-                "type='signal',interface='org.freedesktop.DBus.Properties',member='PropertiesChanged',path_namespace='/org/bluez'"
-            )?;
+            let rule = MatchRule::builder()
+                .msg_type(MessageType::Signal)
+                .interface("org.freedesktop.DBus.Properties")?
+                .member("PropertiesChanged")?
+                .path_namespace("/org/bluez")?
+                .build();
+            dbus_proxy.add_match_rule(rule)?;
         }
-        let messages =  MessageIterator::from(system);
+        let messages = MessageIterator::from(system);
         Ok(Self { messages })
     }
 }
