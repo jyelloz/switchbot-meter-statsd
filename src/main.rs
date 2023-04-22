@@ -155,14 +155,14 @@ impl PropertiesChangedIterator {
         Some(msg)
     }
 
-    fn is_signal<'a>(header: MessageHeader<'a>) -> Option<MessageHeader<'a>> {
+    fn is_signal(header: MessageHeader<'_>) -> Option<MessageHeader<'_>> {
         header.message_type()
             .ok()
             .filter(|t| *t == MessageType::Signal)?;
         Some(header)
     }
 
-    fn is_dbus_properties<'a>(header: MessageHeader<'a>) -> Option<MessageHeader<'a>> {
+    fn is_dbus_properties(header: MessageHeader<'_>) -> Option<MessageHeader<'_>> {
         header.interface()
             .ok()
             .flatten()
@@ -170,7 +170,7 @@ impl PropertiesChangedIterator {
         Some(header)
     }
 
-    fn is_dbus_properties_changed<'a>(header: MessageHeader<'a>) -> Option<MessageHeader<'a>> {
+    fn is_dbus_properties_changed(header: MessageHeader<'_>) -> Option<MessageHeader<'_>> {
         header.member()
             .ok()
             .flatten()
@@ -180,10 +180,10 @@ impl PropertiesChangedIterator {
 }
 
 fn mac_address_from_dbus_path(path: &str) -> String {
-    path.split("/")
+    path.split('/')
         .last()
         .unwrap()
-        .split("_")
+        .split('_')
         .skip(1)
         .collect::<Vec<&str>>()
         .join(":")
