@@ -202,9 +202,8 @@ fn main() -> anyhow::Result<()> {
     spawn_ensure_discovering()?;
     let statsd = StatsdReporter::try_default()?;
     let events = PropertiesChangedIterator::system()?
-        .map(|m| Event::try_from(&*m))
-        .filter(|e| e.is_ok());
-    for Event::Updated(path, data) in events.flatten() {
+        .filter_map(|m| Event::try_from(m.as_ref()).ok());
+    for Event::Updated(path, data) in events {
         let device_id = mac_address_from_dbus_path(&path);
         let device = SwitchbotThermometer::try_from(
             (device_id.clone(), data.data.as_slice())
