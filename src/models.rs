@@ -19,9 +19,9 @@ impl From<Celsius> for Fahrenheit {
         )
     }
 }
-impl Into<f32> for Fahrenheit {
-    fn into(self) -> f32 {
-        self.0
+impl From<Fahrenheit> for f32 {
+    fn from(val: Fahrenheit) -> Self {
+        val.0
     }
 }
 
@@ -66,9 +66,9 @@ impl From<Fahrenheit> for Celsius {
         )
     }
 }
-impl Into<f32> for Celsius {
-    fn into(self) -> f32 {
-        self.0
+impl From<Celsius> for f32 {
+    fn from(val: Celsius) -> Self {
+        val.0
     }
 }
 
@@ -112,7 +112,7 @@ impl SwitchbotThermometer {
             1
         } else {
             -1
-        } as i32;
+        };
         let temperature_x10 = signum
             *
             ((b4 & 0b0111_1111) as i32) * 10 + (b3 as i32)

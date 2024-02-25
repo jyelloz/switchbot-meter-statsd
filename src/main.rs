@@ -70,7 +70,7 @@ enum Event {
     Updated(String, ThermometerData),
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, Type)]
+#[derive(Debug, Deserialize, Serialize, Type)]
 struct PropertiesChanged {
     interface: String,
     changed_properties: HashMap<String, OwnedValue>,
@@ -80,31 +80,32 @@ struct PropertiesChanged {
 impl TryFrom<&Message> for Event {
     type Error = EventConvertError;
     fn try_from(msg: &Message) -> Result<Self, Self::Error> {
-        let path = msg.path()
+        let header = msg.header();
+        let path = header.path()
             .ok_or(EventConvertError::MessageParsing("path"))?;
         let body: PropertiesChanged = msg.body()
+            .deserialize()
             .map_err(|_| EventConvertError::MessageParsing("body"))?;
         (path, body).try_into()
     }
 }
 
-impl TryFrom<(ObjectPath<'_>, PropertiesChanged)> for Event {
+impl TryFrom<(&ObjectPath<'_>, PropertiesChanged)> for Event {
     type Error = EventConvertError;
-    fn try_from(item: (ObjectPath<'_>, PropertiesChanged)) -> Result<Self, Self::Error> {
-        let (path, mut body) = item;
-        let path = path.to_string();
-        if body.interface != DEVICE_1 {
-            Err(EventConvertError::InterfaceMismatch(body.interface.clone()))?;
+    fn try_from(item: (&ObjectPath<'_>, PropertiesChanged)) -> Result<Self, Self::Error> {
+        let (
+            path,
+            PropertiesChanged { interface, mut changed_properties, .. },
+        ) = item;
+        if interface != DEVICE_1 {
+            Err(EventConvertError::InterfaceMismatch(interface))?;
         }
-        let dict: Dict = body.changed_properties.remove(SERVICE_DATA)
-            .ok_or(EventConvertError::MessageParsing(SERVICE_DATA))?
-            .try_into()
-            .map_err(|_| EventConvertError::MessageParsing(SERVICE_DATA))?;
-        let mut dict: HashMap<String, Vec<u8>> = dict.try_into()
-            .map_err(|_| EventConvertError::MessageParsing("HashMap"))?;
-        dict.remove(THERMOMETER_UUID)
+        changed_properties.remove(SERVICE_DATA)
+            .and_then(|data| Dict::try_from(data).ok())
+            .and_then(|dict| HashMap::<String, Vec<u8>>::try_from(dict).ok())
+            .and_then(|mut m| m.remove(THERMOMETER_UUID))
             .map(ThermometerData::from)
-            .map(|data| Event::Updated(path, data))
+            .map(|data| Event::Updated(path.to_string(), data))
             .ok_or(EventConvertError::ThermometerDataMissing)
     }
 }
@@ -138,7 +139,7 @@ static SERVICE_DATA: &str = "ServiceData";
 static THERMOMETER_UUID: &str = "00000d00-0000-1000-8000-00805f9b34fb";
 
 impl std::iter::Iterator for PropertiesChangedIterator {
-    type Item = std::sync::Arc<Message>;
+    type Item = Message;
 
     fn next(&mut self) -> Option<Self::Item> {
         let Self { messages } = self;
@@ -154,9 +155,8 @@ impl std::iter::Iterator for PropertiesChangedIterator {
 }
 
 impl PropertiesChangedIterator {
-    fn filter<M: std::ops::Deref<Target=Message>>(msg: M) -> Option<M> {
-        msg.header()
-            .ok()
+    fn filter(msg: Message) -> Option<Message> {
+        Some(msg.header())
             .and_then(Self::is_signal)
             .and_then(Self::is_dbus_properties)
             .and_then(Self::is_dbus_properties_changed)?;
@@ -164,24 +164,21 @@ impl PropertiesChangedIterator {
     }
 
     fn is_signal(header: MessageHeader<'_>) -> Option<MessageHeader<'_>> {
-        header.message_type()
-            .ok()
-            .filter(|t| *t == MessageType::Signal)?;
-        Some(header)
+        if let MessageType::Signal = header.message_type() {
+            Some(header)
+        } else {
+            None
+        }
     }
 
     fn is_dbus_properties(header: MessageHeader<'_>) -> Option<MessageHeader<'_>> {
         header.interface()
-            .ok()
-            .flatten()
             .filter(|i| *i == PROPERTIES)?;
         Some(header)
     }
 
     fn is_dbus_properties_changed(header: MessageHeader<'_>) -> Option<MessageHeader<'_>> {
         header.member()
-            .ok()
-            .flatten()
             .filter(|m| *m == PROPERTIES_CHANGED)?;
         Some(header)
     }
@@ -202,7 +199,7 @@ fn main() -> anyhow::Result<()> {
     spawn_ensure_discovering()?;
     let statsd = StatsdReporter::try_default()?;
     let events = PropertiesChangedIterator::system()?
-        .filter_map(|m| Event::try_from(m.as_ref()).ok());
+        .filter_map(|m| Event::try_from(&m).ok());
     for Event::Updated(path, data) in events {
         let device_id = mac_address_from_dbus_path(&path);
         let device = SwitchbotThermometer::try_from(
@@ -211,7 +208,7 @@ fn main() -> anyhow::Result<()> {
         println!(
             "{} {} {} {}",
             &device_id,
-            device.c().0,
+            f32::from(device.f()),
             device.humidity,
             device.battery,
         );

@@ -41,7 +41,7 @@ impl Reporter for StatsdReporter {
             ..
         } = device;
 
-        let device_id = address.replace(":", "")
+        let device_id = address.replace(':', "")
             .to_ascii_lowercase();
 
         let temperature = (device.c().0 * 100f32) as u64;
