@@ -6,7 +6,7 @@ edition = "2021"
 license = "MIT"
 
 [dependencies]
-zbus = "4"
+zbus = "5"
 anyhow = "*"
 serde = "1"
 cadence = "1"

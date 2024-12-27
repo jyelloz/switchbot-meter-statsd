@@ -10,8 +10,8 @@ use std::{
 use zbus::{
     MatchRule,
     Message,
-    MessageHeader,
-    MessageType,
+    message::Header as MessageHeader,
+    message::Type as MessageType,
     blocking::{
         MessageIterator,
         Connection,
@@ -40,9 +40,7 @@ use models::{
     Reporter as _,
 };
 use statsd_output::StatsdReporter;
-mod adapter1 {
-    pub use super::bluez::Adapter1ProxyBlocking;
-}
+use bluez::adapter1;
 
 #[derive(Clone, Debug, Deserialize, Serialize, Type)]
 struct ThermometerData {
