@@ -1,11 +1,5 @@
-use std::{
-   fmt,
-   convert::TryFrom,
-};
-use serde::{
-    Serialize,
-    Deserialize,
-};
+use serde::{Deserialize, Serialize};
+use std::{convert::TryFrom, fmt};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Celsius(pub f32);
@@ -14,9 +8,7 @@ pub struct Fahrenheit(pub f32);
 
 impl From<Celsius> for Fahrenheit {
     fn from(c: Celsius) -> Self {
-        Fahrenheit(
-            (c.0 * 9f32 / 5f32) + 32f32
-        )
+        Fahrenheit((c.0 * 9f32 / 5f32) + 32f32)
     }
 }
 impl From<Fahrenheit> for f32 {
@@ -61,9 +53,7 @@ impl fmt::Display for SwitchbotThermometer {
 
 impl From<Fahrenheit> for Celsius {
     fn from(f: Fahrenheit) -> Self {
-        Celsius(
-            (f.0 - 32f32) * 5f32 / 9f32
-        )
+        Celsius((f.0 - 32f32) * 5f32 / 9f32)
     }
 }
 impl From<Celsius> for f32 {
@@ -88,7 +78,6 @@ pub struct SwitchbotThermometer {
 }
 
 impl SwitchbotThermometer {
-
     pub fn temperature(&self) -> PreferredTemperature {
         if self.fahrenheit {
             PreferredTemperature::F(self.f())
@@ -108,15 +97,8 @@ impl SwitchbotThermometer {
     pub fn decode_temperature(bytes: &[u8]) -> Result<Celsius, anyhow::Error> {
         let b3 = bytes[3];
         let b4 = bytes[4];
-        let signum = if (b4 >> 7 & 0x1) == 1  {
-            1
-        } else {
-            -1
-        };
-        let temperature_x10 = signum
-            *
-            ((b4 & 0b0111_1111) as i32) * 10 + (b3 as i32)
-        ;
+        let signum = if (b4 >> 7 & 0x1) == 1 { 1 } else { -1 };
+        let temperature_x10 = signum * ((b4 & 0b0111_1111) as i32) * 10 + (b3 as i32);
         Ok(Celsius((temperature_x10 as f32) / 10f32))
     }
 
@@ -134,7 +116,6 @@ impl SwitchbotThermometer {
         let b2 = bytes[2];
         b2 & 0b0111_1111
     }
-
 }
 
 impl TryFrom<(String, &[u8])> for SwitchbotThermometer {
@@ -145,15 +126,13 @@ impl TryFrom<(String, &[u8])> for SwitchbotThermometer {
         let fahrenheit = Self::decode_temperature_unit(bytes);
         let humidity = Self::decode_humidity(bytes);
         let battery = Self::decode_battery(bytes);
-        Ok(
-            SwitchbotThermometer {
-                address,
-                temperature,
-                fahrenheit,
-                humidity,
-                battery,
-            }
-        )
+        Ok(SwitchbotThermometer {
+            address,
+            temperature,
+            fahrenheit,
+            humidity,
+            battery,
+        })
     }
 }
 
