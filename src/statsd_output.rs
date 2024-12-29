@@ -1,15 +1,6 @@
+use crate::models::{ReportResult, Reporter, SwitchbotThermometer};
+use cadence::{prelude::*, StatsdClient, UdpMetricSink, DEFAULT_PORT};
 use std::net::UdpSocket;
-use cadence::{
-    prelude::*,
-    StatsdClient,
-    UdpMetricSink,
-    DEFAULT_PORT,
-};
-use crate::models::{
-    Reporter,
-    ReportResult,
-    SwitchbotThermometer,
-};
 
 pub type InitResult = anyhow::Result<StatsdReporter>;
 
@@ -41,8 +32,7 @@ impl Reporter for StatsdReporter {
             ..
         } = device;
 
-        let device_id = address.replace(':', "")
-            .to_ascii_lowercase();
+        let device_id = address.replace(':', "").to_ascii_lowercase();
 
         let temperature = (device.c().0 * 100f32) as u64;
         let humidity = *humidity as u64;
@@ -56,31 +46,19 @@ impl Reporter for StatsdReporter {
     }
 }
 
-fn output_temperature(
-    metrics: &StatsdClient,
-    device_id: &str,
-    value: u64,
-) -> anyhow::Result<()> {
+fn output_temperature(metrics: &StatsdClient, device_id: &str, value: u64) -> anyhow::Result<()> {
     let key = format!("temperature.{}", device_id);
     metrics.gauge(&key, value)?;
     Ok(())
 }
 
-fn output_humidity(
-    metrics: &StatsdClient,
-    device_id: &str,
-    value: u64,
-) -> anyhow::Result<()> {
+fn output_humidity(metrics: &StatsdClient, device_id: &str, value: u64) -> anyhow::Result<()> {
     let key = format!("humidity.{}", device_id);
     metrics.gauge(&key, value)?;
     Ok(())
 }
 
-fn output_battery(
-    metrics: &StatsdClient,
-    device_id: &str,
-    value: u64,
-) -> anyhow::Result<()> {
+fn output_battery(metrics: &StatsdClient, device_id: &str, value: u64) -> anyhow::Result<()> {
     let key = format!("battery.{}", device_id);
     metrics.gauge(&key, value)?;
     Ok(())
