@@ -119,8 +119,8 @@ impl PropertiesChangedIterator {
             let dbus_proxy = fdo::DBusProxy::new(&system)?;
             let rule = MatchRule::builder()
                 .msg_type(MessageType::Signal)
-                .interface("org.freedesktop.DBus.Properties")?
-                .member("PropertiesChanged")?
+                .interface(PROPERTIES)?
+                .member(PROPERTIES_CHANGED)?
                 .path_namespace("/org/bluez")?
                 .build();
             dbus_proxy.add_match_rule(rule)?;
